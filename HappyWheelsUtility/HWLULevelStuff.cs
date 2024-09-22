@@ -1,5 +1,6 @@
 ﻿#nullable disable
 using HappyWheelsUtility.Menus;
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Text;
 using System.Xml.Linq;
@@ -159,10 +160,17 @@ Rating: {Math.Round(Rating, 2)}";
                 return null;
             }
 
-            XDocument doc = XDocument.Parse(responseInfo.Content.ReadAsStringAsync().Result);
-            var root = doc.Root;
-            var lv = root.Element("lv");
-            return ParseLevelElement(lv, await responseLevel.Content.ReadAsByteArrayAsync());
+            try
+            {
+                XDocument doc = XDocument.Parse(responseInfo.Content.ReadAsStringAsync().Result);
+                var root = doc.Root;
+                var lv = root.Element("lv");
+                return ParseLevelElement(lv, await responseLevel.Content.ReadAsByteArrayAsync());
+            } catch (Exception ex)
+            {
+                Debug.WriteLine($"Exception when fetching level: {ex.Message}");
+                return null;
+            }
         }
 
         public static LevelData ParseLevelElement(XElement lv, byte[] data=null)
@@ -218,10 +226,15 @@ Rating: {Math.Round(Rating, 2)}";
                 return null;
             }
 
-            XDocument doc = XDocument.Parse(await response.Content.ReadAsStringAsync());
-            foreach (XElement lv in doc.Root.Elements("lv"))
+            try
             {
-                levels.Add(ParseLevelElement(lv));
+                XDocument doc = XDocument.Parse(await response.Content.ReadAsStringAsync());
+                foreach (XElement lv in doc.Root.Elements("lv"))
+                {
+                    levels.Add(ParseLevelElement(lv));
+                }
+            } catch (Exception ex) {
+                Debug.WriteLine($"Exception when fetching levels by user: {ex.Message}");
             }
 
             return levels;
@@ -247,10 +260,17 @@ Rating: {Math.Round(Rating, 2)}";
                 return null;
             }
 
-            XDocument doc = XDocument.Parse(await response.Content.ReadAsStringAsync());
-            foreach (XElement lv in doc.Root.Elements("lv"))
+            try
             {
-                levels.Add(ParseLevelElement(lv));
+                XDocument doc = XDocument.Parse(await response.Content.ReadAsStringAsync());
+                foreach (XElement lv in doc.Root.Elements("lv"))
+                {
+                    levels.Add(ParseLevelElement(lv));
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Exception when fetching all levels: {ex.Message}");
             }
 
             return levels;
@@ -277,13 +297,51 @@ Rating: {Math.Round(Rating, 2)}";
                 return null;
             }
 
-            XDocument doc = XDocument.Parse(await response.Content.ReadAsStringAsync());
-            foreach (XElement lv in doc.Root.Elements("lv"))
+            try
             {
-                levels.Add(ParseLevelElement(lv));
+                XDocument doc = XDocument.Parse(await response.Content.ReadAsStringAsync());
+                foreach (XElement lv in doc.Root.Elements("lv"))
+                {
+                    levels.Add(ParseLevelElement(lv));
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Exception when searching levels by name: {ex.Message}");
             }
 
             return levels;
+        }
+
+        public static async Task<List<LevelData>> GetLocalFavorites(SortLevelsBy sortby)
+        {
+            List<LevelData> levels = new();
+
+            try
+            {
+                foreach (uint id in FavoriteLevels.LevelIDs)
+                {
+                    LevelData data = await FetchLevel(id);
+                    if (data != null)
+                    {
+                        levels.Add(data);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Exception when getting local favorites: {ex.Message}\n{ex.StackTrace}");
+                return levels;
+            }
+
+            return sortby switch
+            {
+                SortLevelsBy.newest => levels.OrderByDescending(lvl => lvl.UploadDate).ToList(),
+                SortLevelsBy.oldest => levels.OrderBy(lvl => lvl.UploadDate).ToList(),
+                SortLevelsBy.plays => levels.OrderByDescending(lvl => lvl.PlayCount).ToList(),
+                SortLevelsBy.rating => levels.OrderByDescending(lvl => lvl.Rating).ToList(),
+                _ => levels,
+            };
         }
 
         public static async Task<List<LevelData>> SearchLevelsByUserName(string sterm, uint page, SortLevelsBy sortby, Uploaded uploaded)
@@ -307,10 +365,17 @@ Rating: {Math.Round(Rating, 2)}";
                 return null;
             }
 
-            XDocument doc = XDocument.Parse(await response.Content.ReadAsStringAsync());
-            foreach (XElement lv in doc.Root.Elements("lv"))
+            try
             {
-                levels.Add(ParseLevelElement(lv));
+                XDocument doc = XDocument.Parse(await response.Content.ReadAsStringAsync());
+                foreach (XElement lv in doc.Root.Elements("lv"))
+                {
+                    levels.Add(ParseLevelElement(lv));
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Exception when searching levels by username: {ex.Message}");
             }
 
             return levels;

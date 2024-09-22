@@ -1,4 +1,8 @@
 ﻿#nullable disable
+using System;
+using System.ComponentModel.Design;
+using System.Diagnostics;
+using System.IO;
 using TextCopy;
 
 namespace HappyWheelsUtility.Menus
@@ -22,15 +26,10 @@ namespace HappyWheelsUtility.Menus
     internal class LevelMenu : BaseMenu
     {
         int SelectedChoice = 0;
-        List<LevelData> Levels;
+        readonly List<LevelData> Levels = new();
         bool LevelsLoaded = false;
-        static string[] Choices = { "List all levels", "Search by level name", "Search by username", "Get user's levels", "Back" };
+        static readonly string[] Choices = { "List all levels", "Search by level name", "Search by username", "Get user's levels", "Get local favorites", "Back" };
         int SelectedFirstChoice = 0;
-
-        public LevelMenu()
-        {
-            Levels = new();
-        }
 
         private void DrawFirstMenu()
         {
@@ -161,7 +160,24 @@ namespace HappyWheelsUtility.Menus
                     }
                     break;
 
-                case 4:
+                case 4:  // get local favorites
+                    {
+                        SortLevelsBy sort = Program.PromptEnum<SortLevelsBy>("Sort by (newest, oldest, plays, rating): ");
+                        List<LevelData> received = HWLULevelStuff.GetLocalFavorites(sort).Result;
+                        if (received != null)
+                        {
+                            Levels.AddRange(received);
+                            LevelsLoaded = true;
+                            DrawLevelMenu();
+                        }
+                        else
+                        {
+                            LevelsLoaded = false;
+                        }
+                    }
+                    break;
+
+                case 5:  // back
                     Program.ChangeMenu(MenuStorage.MainMenu);
                     break;
             }
@@ -252,52 +268,132 @@ namespace HappyWheelsUtility.Menus
             DrawLevelOption(SelectedChoice);
         }
 
+        private void DrawInteractionMenu(int chosen, string[] options)
+        {
+            for (int i = 0; i < options.Length; i++)
+            {
+                int y = 14 + i;
+                Console.SetCursorPosition(0, y);
+                Console.WriteLine(new string(' ', 15));
+                Console.SetCursorPosition(0, y);
+                Console.ForegroundColor = i == chosen ? ConsoleColor.Blue : ConsoleColor.Gray;
+                Console.WriteLine($"{(i == chosen ? '>' : ' ')} {options[i]}");
+                Console.ForegroundColor = ConsoleColor.Gray;
+            }
+        }
+
         private void Interact()
         {
             LevelData data = Levels[SelectedChoice];
             Program.Clear();
             Program.WriteLevelData(data);
+
+            int chosen = 0;
+            string[] options;
             if (data.ID == 1)
             {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("Cannot decompile Happy Green Hills as it's hardcoded");
-                Console.ForegroundColor = ConsoleColor.Gray;
+                options = new string[]{ "Favorite", "Back" };
             } else
             {
-                bool ans = Program.PromptYesNo("Wanna decompile this level? (Y/N): ");
-                if (ans == true)
+                options = new string[] { "Play", "Decompile", "Favorite", "Back" };
+            }
+
+            if (FavoriteLevels.LevelIDs.Contains(Levels[SelectedChoice].ID))
+            {
+                int index = Array.IndexOf(options, "Favorite");
+                options[index] = "Unfavorite";
+            }
+
+            DrawInteractionMenu(chosen, options);
+
+            bool run = true;
+            while (run)
+            {
+                var key = Console.ReadKey(true);
+                switch (key.Key)
                 {
-                    try
-                    {
-                        byte[] encrypted = HWLULevelStuff.FetchLevelBytes(Levels[SelectedChoice].ID).Result;
-                        if (encrypted == null)
+                    case ConsoleKey.DownArrow:
+                        chosen++;
+                        if (chosen >= options.Length)
                         {
-                            Console.ForegroundColor = ConsoleColor.Red;
-                            Console.WriteLine("There was an error while fetching the level.");
-                            Console.ForegroundColor = ConsoleColor.Gray;
+                            chosen = 0;
                         }
-                        string decompiled = HWLULevelStuff.DecompileLevel(encrypted, data.CreatorID);
-                        if (Program.PromptYesNo("Copy to clipboard instead of saving to file? (Y/N): "))
+                        DrawInteractionMenu(chosen, options);
+                        break;
+
+                    case ConsoleKey.UpArrow:
+                        chosen--;
+                        if (chosen < 0)
                         {
-                            new Clipboard().SetText(decompiled);
+                            chosen = options.Length-1;
                         }
-                        else
+                        DrawInteractionMenu(chosen, options);
+                        break;
+
+                    case ConsoleKey.Enter:
+                        switch (options[chosen])
                         {
-                            string outPath = Program.Prompt("Input output path: ");
-                            File.WriteAllText(outPath, decompiled);
+                            case "Play":
+                                Process.Start(new ProcessStartInfo
+                                {
+                                    FileName = $"https://totaljerkface.com/happy_wheels.tjf?level_id={Levels[SelectedChoice].ID}",
+                                    UseShellExecute = true
+                                });
+                                break;
+
+                            case "Decompile":
+                                Program.Clear();
+                                try
+                                {
+                                    byte[] encrypted = HWLULevelStuff.FetchLevelBytes(Levels[SelectedChoice].ID).Result;
+                                    if (encrypted == null)
+                                    {
+                                        Console.ForegroundColor = ConsoleColor.Red;
+                                        Console.WriteLine("There was an error while fetching the level.");
+                                        Console.ForegroundColor = ConsoleColor.Gray;
+                                    }
+                                    string decompiled = HWLULevelStuff.DecompileLevel(encrypted, data.CreatorID);
+                                    if (Program.PromptYesNo("Copy to clipboard instead of saving to file? (Y/N): "))
+                                    {
+                                        new Clipboard().SetText(decompiled);
+                                    }
+                                    else
+                                    {
+                                        string outPath = Program.Prompt("Input output path: ");
+                                        File.WriteAllText(outPath, decompiled);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.ForegroundColor = ConsoleColor.Red;
+                                    Console.WriteLine($"Exception caught: {ex.Message}");
+                                    Console.ForegroundColor = ConsoleColor.Gray;
+                                }
+                                Console.WriteLine("Press any key to go back");
+                                Console.ReadKey(true);
+                                run = false;
+                                break;
+
+                            case "Favorite":
+                                FavoriteLevels.Favorite(Levels[SelectedChoice].ID);
+                                options[chosen] = "Unfavorite";
+                                DrawInteractionMenu(chosen, options);
+                                break;
+
+                            case "Unfavorite":
+                                FavoriteLevels.Unfavorite(Levels[SelectedChoice].ID);
+                                options[chosen] = "Favorite";
+                                DrawInteractionMenu(chosen, options);
+                                break;
+
+                            case "Back":
+                                run = false;
+                                break;
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine($"Exception caught: {ex.Message}");
-                        Console.ForegroundColor = ConsoleColor.Gray;
-                    }
+                        break;
                 }
             }
 
-            Console.WriteLine("Press any key to go back");
-            Console.ReadKey(true);
             DrawLevelMenu();
         }
     }

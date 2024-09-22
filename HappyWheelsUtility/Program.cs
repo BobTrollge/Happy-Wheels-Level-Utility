@@ -15,7 +15,7 @@ namespace HappyWheelsUtility
 
     internal class Program
     {
-        public static string Version = "1.0";
+        public static string Version = "1.1";
         static BaseMenu Current = null;
         public static bool Run = true;
 
